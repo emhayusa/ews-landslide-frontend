@@ -9,8 +9,16 @@ export const useStationStore = defineStore('station', {
   getters: {
     totalStations: (state) => state.stations.length,
     baseStations: (state) => state.stations.filter(r => r.hardware_type === 'BASE').length,
-    activeRovers: (state) => state.stations.filter(r => r.hardware_type === 'ROVER' && r.status === 'ACTIVE').length,
-    maintenanceStations: (state) => state.stations.filter(r => r.status === 'MAINTENANCE').length
+    activeRovers: (state) => state.stations.filter(r => 
+      r.hardware_type === 'ROVER' && 
+      r.status === 'ACTIVE' && 
+      (Math.abs(Number(r.deformation)) || 0) < 0.1
+    ).length,
+    maintenanceRovers: (state) => state.stations.filter(r => 
+      r.hardware_type === 'ROVER' && 
+      (r.status === 'MAINTENANCE' || (Math.abs(Number(r.deformation)) || 0) >= 0.1)
+    ).length,
+    offlineRovers: (state) => state.stations.filter(r => r.hardware_type === 'ROVER' && r.status === 'INACTIVE').length
   },
   actions: {
     async fetchStations() {
@@ -20,13 +28,25 @@ export const useStationStore = defineStore('station', {
         this.stations = (response.data || []).map(st => ({
           ...st,
           coordinates: `${st.latitude}, ${st.longitude}`,
-          lastActivity: 'Mengecek...'
+          lastActivity: 'Mengecek...',
+          history: [] // Untuk menampung data streaming untuk chart
         }));
       } catch (error) {
         console.error('Store fetchStations error:', error);
         throw error;
       } finally {
         this.loading = false;
+      }
+    },
+    addHistory(stationId, point) {
+      const station = this.stations.find(s => s.station_id === stationId);
+      if (station) {
+        if (!station.history) station.history = [];
+        station.history.push(point);
+        // Batasi histori agar tidak membebani memori (misal: 100 data point terakhir)
+        if (station.history.length > 100) {
+          station.history.shift();
+        }
       }
     },
     async createStation(data) {

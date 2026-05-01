@@ -44,7 +44,7 @@ export const useMapStore = defineStore('mapStore', {
 
     viewOptions: {
       center: fromLonLat([110.40, -7.15]), // Area Ungaran, Jawa Tengah
-      zoom: 12,
+      zoom: 9,
       minZoom: 4.5, // Kunci level zoom-out mentok di skala ini
       extent: transformExtent([90, -15, 145, 10], 'EPSG:4326', 'EPSG:3857'), // Tembok extent batas pan / geser wilayah
       rotation: 0,
@@ -988,7 +988,7 @@ export const useMapStore = defineStore('mapStore', {
 
       const roverCount = { count: 0 }
       let addedCount = 0;
-      
+
       stations.forEach((st) => {
         try {
           if (!st.longitude || !st.latitude) return;
@@ -1014,7 +1014,7 @@ export const useMapStore = defineStore('mapStore', {
           console.error(`[Map] Error adding station ${st.name}:`, err);
         }
       })
-      
+
       console.log(`[Map] Rendered ${addedCount} stations.`);
       this.map.render();
       this.map.renderSync();

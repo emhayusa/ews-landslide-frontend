@@ -137,7 +137,7 @@
               <template v-slot:body-cell-chart="props">
                 <q-td :props="props">
                   <div class="flex items-center justify-center q-gutter-x-sm">
-                    <q-btn flat round dense size="xs" icon="bar_chart" color="cyan-6" class="bg-cyan-1 q-pa-xs border-radius-sm" />
+                    <q-btn flat round dense size="xs" icon="bar_chart" color="cyan-6" class="bg-cyan-1 q-pa-xs border-radius-sm" @click.stop="openChart(props.row)" />
                     <q-btn flat round dense size="xs" icon="system_update_alt" color="amber-7" class="bg-amber-1 q-pa-xs border-radius-sm" />
                   </div>
                 </q-td>
@@ -166,12 +166,19 @@
         </q-card>
       </div>
     </div>
+    <!-- Chart Dialog -->
+    <ChartDialog 
+      v-model="showChartDialog"
+      :station-id="selectedStationForChart?.station_id"
+      :station-name="selectedStationForChart?.name"
+    />
   </q-page>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, computed, watch } from 'vue';
+import { onMounted, onUnmounted, computed, watch, ref } from 'vue';
 import MapView from '../Peta/MapView.vue';
+import ChartDialog from 'src/components/ChartDialog.vue';
 import { useRouter } from 'vue-router';
 import { useStationStore } from "src/stores/station";
 import { useMapStore } from "src/stores/map";
@@ -183,6 +190,14 @@ const router = useRouter();
 const stationStore = useStationStore();
 const mapStore = useMapStore();
 const streamStore = useStreamStore();
+
+const showChartDialog = ref(false);
+const selectedStationForChart = ref(null);
+
+function openChart(row) {
+  selectedStationForChart.value = row;
+  showChartDialog.value = true;
+}
 
 console.log('[Dashboard] Initializing...');
 
@@ -213,6 +228,7 @@ onMounted(async () => {
   console.log('[Dashboard] Mounted, fetching stations & connecting WS...');
   await stationStore.fetchStations();
   streamStore.connect();
+  streamStore.connectSensor();
   
   console.log('[Dashboard] Stations fetched:', stationStore.stations.length);
   // Ensure map is updated if already ready
@@ -226,27 +242,63 @@ onUnmounted(() => {
   streamStore.disconnect();
 });
 
-// Watch for streaming data to update stations
+// Watch for streaming data to update stations (General: Battery, Rain, etc)
 watch(() => streamStore.latestData, (newData) => {
   if (newData && newData.payload && newData.payload.params) {
     const payload = newData.payload;
     const params = payload.params;
     
-    // Find station by ID or StationID from the broadcast
     const targetStation = stationStore.stations.find(s => 
       s.id === newData.id || 
       s.station_id === newData.station_id
     );
 
     if (targetStation) {
-      targetStation.deformation = (params.deformasi || 0).toFixed(4);
+      // Keep existing deformation if we are getting it from the other stream, 
+      // or update if this stream provides a more specific one
+      if (params.deformasi !== undefined) {
+        targetStation.deformation = (params.deformasi || 0).toFixed(3);
+      }
       targetStation.battery = (params.Baterai || 0).toFixed(2);
       targetStation.solar = (params.Solar || 0).toFixed(2);
       targetStation.rain = (params.bucket || 0).toFixed(1);
       targetStation.lastUpdate = date.formatDate(new Date(), 'HH:mm:ss');
       
-      // Update map store if popup is open for this station
+      // Update history for chart
+      if (params.deformasi !== undefined) {
+        stationStore.addHistory(targetStation.station_id, {
+          x: new Date().getTime(),
+          y: Number(params.deformasi.toFixed(3))
+        });
+      }
+      
       if (mapStore.selectedStation && mapStore.selectedStation.id === targetStation.id) {
+        mapStore.selectedStation = { ...targetStation };
+      }
+    }
+  }
+});
+
+const INITIAL_DISTANCE = 17528.774;
+
+// Watch for sensor distance data (Specifically for UNGR)
+watch(() => streamStore.latestSensorData, (newData) => {
+  if (newData && newData.distance) {
+    const targetStation = stationStore.stations.find(s => s.station_id === 'UNGR');
+    if (targetStation) {
+      // Calculate deformation: Current Distance - Initial Distance (in meters)
+      const diffMeters = newData.distance - INITIAL_DISTANCE;
+      
+      targetStation.deformation = diffMeters.toFixed(3);
+      targetStation.lastUpdate = date.formatDate(new Date(), 'HH:mm:ss');
+      
+      // Update history for chart
+      stationStore.addHistory('UNGR', {
+        x: new Date().getTime(),
+        y: Number(diffMeters.toFixed(3))
+      });
+      
+      if (mapStore.selectedStation && mapStore.selectedStation.station_id === 'UNGR') {
         mapStore.selectedStation = { ...targetStation };
       }
     }
@@ -261,31 +313,24 @@ watch(() => mapStore.map, (map) => {
   }
 });
 
-watch(() => stationStore.stations, (newVal) => {
-  if (mapStore.map) {
-    console.log('[Dashboard] Stations changed, updating map...');
-    mapStore.setStations(newVal);
-  }
-}, { deep: true, immediate: true });
-
 const summaryCards = computed(() => [
   { label: 'Base Station', value: stationStore.baseStations, icon: 'satellite_alt', color: 'blue-6' },
   { label: 'Rover Station', value: stationStore.stations.filter(s => s.hardware_type === 'ROVER').length, icon: 'cell_tower', color: 'purple-4' },
-  { label: 'Normal / Active', value: stationStore.stations.filter(s => s.status === 'ACTIVE').length, icon: 'check_circle', color: 'green-5' },
-  { label: 'Danger / Bahaya', value: stationStore.maintenanceStations, icon: 'campaign', color: 'red-5' },
-  { label: 'Offline', value: stationStore.stations.filter(s => s.status === 'INACTIVE').length, icon: 'wifi_off', color: 'blue-5' }
+  { label: 'Normal / Active', value: stationStore.activeRovers, icon: 'check_circle', color: 'green-5' },
+  { label: 'Danger / Bahaya', value: stationStore.maintenanceRovers, icon: 'campaign', color: 'red-5' },
+  { label: 'Offline', value: stationStore.offlineRovers, icon: 'wifi_off', color: 'blue-5' }
 ]);
 
 const legendItems = computed(() => [
   { label: 'Base Station', color: 'blue-6', count: stationStore.baseStations },
-  { label: 'Active', color: 'green-5', count: stationStore.stations.filter(s => s.status === 'ACTIVE').length },
-  { label: 'Danger / Bahaya', color: 'red-5', count: stationStore.maintenanceStations },
-  { label: 'Offline', color: 'grey-6', count: stationStore.stations.filter(s => s.status === 'INACTIVE').length }
+  { label: 'Active', color: 'green-5', count: stationStore.activeRovers },
+  { label: 'Danger / Bahaya', color: 'red-5', count: stationStore.maintenanceRovers },
+  { label: 'Offline', color: 'grey-6', count: stationStore.offlineRovers }
 ]);
 
 const columns = [
   { name: 'pairing', align: 'left', label: 'STATION / PAIRING', field: 'name' },
-  { name: 'deformation', align: 'left', label: 'DEFORMATION (cm)', field: 'deformation' },
+  { name: 'deformation', align: 'left', label: 'DEFORMATION (m)', field: 'deformation' },
   { name: 'accel', align: 'left', label: 'ACCELEROMETER (m/s²)', field: 'accel' },
   { name: 'rain', align: 'left', label: 'RAIN GAUGE (mm/h)', field: 'rain' },
   { name: 'lastUpdate', align: 'left', label: 'LAST UPDATE', field: 'lastUpdate' },
@@ -295,16 +340,18 @@ const columns = [
 ];
 
 const rows = computed(() => {
-  return stationStore.stations.map(st => ({
-    ...st,
-    pairing: st.name,
-    deformation: st.deformation || '0.0000',
-    accel: st.accel || 'N/A',
-    rain: st.rain || '0.0',
-    lastUpdate: st.lastUpdate || date.formatDate(st.updated_at, 'HH:mm:ss'),
-    status: st.status === 'ACTIVE' ? 'NORMAL' : (st.status === 'MAINTENANCE' ? 'BAHAYA' : 'OFFLINE'),
-    push: 'IDLE'
-  }));
+  return stationStore.stations
+    .filter(st => st.hardware_type === 'ROVER')
+    .map(st => ({
+      ...st,
+      pairing: st.name,
+      deformation: st.deformation || '0.000',
+      accel: st.accel || 'N/A',
+      rain: st.rain || '0.0',
+      lastUpdate: st.lastUpdate || date.formatDate(st.updated_at, 'HH:mm:ss'),
+      status: (Math.abs(Number(st.deformation)) >= 0.1 || st.status === 'MAINTENANCE') ? 'BAHAYA' : (st.status === 'ACTIVE' ? 'NORMAL' : 'OFFLINE'),
+      push: 'IDLE'
+    }));
 });
 
 const onRowClick = (evt, row) => {
