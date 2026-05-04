@@ -139,12 +139,14 @@ const menuItems = computed(() => {
   const baseMenu = [
     { title: 'Dashboard', icon: 'dashboard', colorClass: 'blue', link: '/dashboard' },
     { title: 'Manajemen User', icon: 'manage_accounts', colorClass: 'indigo', link: '/users', adminOnly: true },
-    { title: 'Manajemen Station', icon: 'sensors', colorClass: 'purple', link: '/stations' },
+    { title: 'Manajemen Site', icon: 'location_on', colorClass: 'cyan', link: '/sites', roles: ['admin', 'operator'] },
+    { title: 'Manajemen Station', icon: 'sensors', colorClass: 'purple', link: '/stations', roles: ['admin', 'operator'] },
     { title: 'Profil', icon: 'person', colorClass: 'amber', link: '/profile' }
   ];
 
   return baseMenu.filter(item => {
     if (item.adminOnly && authStore.user?.role !== 'admin') return false;
+    if (item.roles && !item.roles.includes(authStore.user?.role)) return false;
     return true;
   });
 });
@@ -241,6 +243,7 @@ onUnmounted(() => {
 .icon-bg-blue { background: rgba(14, 165, 233, 0.1); }
 .icon-bg-indigo { background: rgba(99, 102, 241, 0.1); }
 .icon-bg-purple { background: rgba(168, 85, 247, 0.1); }
+.icon-bg-cyan { background: rgba(6, 182, 212, 0.1); }
 .icon-bg-amber { background: rgba(245, 158, 11, 0.1); }
 
 /* Global Override for Header Header Shadow */

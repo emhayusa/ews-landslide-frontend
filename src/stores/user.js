@@ -17,6 +17,8 @@ export const useUserStore = defineStore('user', {
           username: u.username,
           email: u.email,
           role: u.role,
+          sites: u.sites || [],
+          site_ids: u.sites ? u.sites.map(s => s.id) : [],
           initials: u.full_name ? u.full_name.substring(0, 2).toUpperCase() : '??',
           avatarColor: 'blue-6',
           dibuat: u.created_at ? date.formatDate(u.created_at, 'DD MMM YYYY') : '-'

@@ -14,6 +14,13 @@ function openChart() {
 onMounted(async () => {
     await mapStore.initMap('map');
     mapStore.enableIdentify(popupRef.value)
+
+    // Re-render stations if data is already available
+    const stationStore = (await import('src/stores/station')).useStationStore()
+    if (stationStore.stations.length > 0 || stationStore.baseStations.length > 0) {
+        console.log('[MapView] Data available, rendering stations...');
+        mapStore.setStations(stationStore.stations, stationStore.baseStations);
+    }
     
     // Use ResizeObserver for more reliable size updates
     const mapEl = document.getElementById('map')
@@ -111,42 +118,26 @@ function getVideoUrl(attributes) {
             </div>
 
             <!-- Conditional Content Based on Type -->
-            <template v-if="mapStore.selectedStation.hardware_type === 'BASE'">
+            <template v-if="mapStore.selectedStation._type === 'BASE'">
                 <!-- BASE Layout -->
-                <div class="column q-gutter-y-xs q-mb-md">
+                <div class="column q-gutter-y-xs q-mb-xs">
                     <div class="row justify-between text-caption items-center" style="font-size: 11px;">
-                        <span class="text-blue-3">Tipe:</span>
-                        <q-badge color="blue-1" text-color="blue-6" class="text-weight-bold" style="font-size: 10px;">Base Station</q-badge>
-                    </div>
-                    <div class="row justify-between text-caption" style="font-size: 11px;">
-                        <span class="text-blue-3">Elevasi:</span>
-                        <span class="text-weight-bold text-slate-800">520 m</span>
-                    </div>
-                    <div class="row justify-between text-caption" style="font-size: 11px;">
-                        <span class="text-blue-3">ID:</span>
+                        <span class="text-blue-3">Kode Station:</span>
                         <span class="text-weight-bold text-slate-800">{{ mapStore.selectedStation.station_id }}</span>
-                    </div>
-                    <div class="row justify-between text-caption" style="font-size: 11px;">
-                        <span class="text-blue-3">Terpasang:</span>
-                        <span class="text-weight-bold text-slate-800">2026-03-01</span>
                     </div>
                 </div>
             </template>
 
             <template v-else>
-                <!-- ROVER Layout (Existing) -->
+                <!-- ROVER Layout -->
                 <div class="column q-gutter-y-xs q-mb-sm">
                     <div class="row justify-between text-caption" style="font-size: 11px;">
-                        <span class="text-grey-5">Tipe:</span>
-                        <q-badge color="purple-1" text-color="purple-5" class="text-weight-bold" style="font-size: 10px;">{{ mapStore.selectedStation.hardware_type }} Station</q-badge>
-                    </div>
-                    <div class="row justify-between text-caption" style="font-size: 11px;">
-                        <span class="text-grey-5">Pair:</span>
-                        <span class="text-weight-bold text-slate-800">BASE-SMG</span>
-                    </div>
-                    <div class="row justify-between text-caption" style="font-size: 11px;">
-                        <span class="text-grey-5">ID:</span>
-                        <span class="text-weight-bold text-blue-3">{{ mapStore.selectedStation.station_id }}</span>
+                        <span class="text-grey-5">Pairing:</span>
+                        <div class="flex items-center no-wrap">
+                          <span class="text-blue-6 text-bold uppercase">{{ mapStore.selectedStation.base_station?.kode || 'BASE' }}</span>
+                          <q-icon name="swap_horiz" size="14px" class="q-mx-xs text-grey-4" />
+                          <span class="text-purple-5 text-bold uppercase">{{ mapStore.selectedStation.station_id }}</span>
+                        </div>
                     </div>
                     <div class="row justify-between text-caption" style="font-size: 11px;">
                         <span class="text-grey-5">Update:</span>
@@ -163,27 +154,40 @@ function getVideoUrl(attributes) {
                             <q-icon name="change_history" size="14px" class="q-mr-sm" />
                             Deformasi:
                         </div>
-                        <div class="text-body2 text-weight-bolder text-slate-900">{{ mapStore.selectedStation.deformation || '0.000' }} cm</div>
+                        <div 
+                          class="text-body2 text-weight-bolder" 
+                          :class="(Math.abs(Number(mapStore.selectedStation.deformation)) >= 0.1 || mapStore.selectedStation.status === 'MAINTENANCE') ? 'text-red-6' : (mapStore.selectedStation.status === 'ACTIVE' ? 'text-green-6' : 'text-slate-900')"
+                        >
+                          {{ mapStore.selectedStation.deformation || '0.000' }} m
+                        </div>
                     </div>
                     <div class="row items-center justify-between">
                         <div class="flex items-center text-blue-3 text-weight-medium text-caption">
                             <q-icon name="vibration" size="14px" class="q-mr-sm" />
                             Accelerometer:
                         </div>
-                        <div class="text-body2 text-weight-bolder text-slate-900">{{ mapStore.selectedStation.accel || 'N/A' }}</div>
+                        <div class="text-body2 text-weight-bolder text-slate-900">N/A</div>
                     </div>
                     <div class="row items-center justify-between">
                         <div class="flex items-center text-blue-3 text-weight-medium text-caption">
                             <q-icon name="cloud" size="14px" class="q-mr-sm" />
-                            Curah Hujan:
+                            Rain (H / D):
                         </div>
-                        <div class="text-body2 text-weight-bolder text-slate-900">{{ mapStore.selectedStation.rain || '0.0' }} mm/h</div>
+                        <div class="text-body2 text-weight-bolder text-slate-900">{{ mapStore.selectedStation.rain || '0.0' }} / {{ mapStore.selectedStation.rain_daily || '0.0' }} <span class="text-caption text-grey-6 text-weight-medium">mm</span></div>
+                    </div>
+                    <div class="row items-center justify-between">
+                        <div class="flex items-center text-blue-3 text-weight-medium text-caption">
+                            <q-icon name="bolt" size="14px" class="q-mr-sm" />
+                            Power (B / S):
+                        </div>
+                        <div class="text-body2 text-weight-bolder text-slate-900">{{ mapStore.selectedStation.battery || '0.0' }} / {{ mapStore.selectedStation.solar || '0.0' }} <span class="text-caption text-grey-6 text-weight-medium">V</span></div>
                     </div>
                 </div>
             </template>
 
             <!-- Action Button -->
             <q-btn
+                v-if="mapStore.selectedStation._type !== 'BASE'"
                 unelevated
                 no-caps
                 size="sm"
@@ -258,6 +262,7 @@ function getVideoUrl(attributes) {
 
     <ChartDialog 
         v-model="showChartDialog" 
+        :stationId="mapStore.selectedStation?.station_id"
         :stationName="mapStore.selectedStation?.name || ''" 
     />
 </template>

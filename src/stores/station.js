@@ -1,24 +1,23 @@
 import { defineStore } from 'pinia';
 import StationService from 'src/services/StationService';
+import BaseStationService from 'src/services/BaseStationService';
 
 export const useStationStore = defineStore('station', {
   state: () => ({
-    stations: [],
+    stations: [], // Rover Stations
+    baseStations: [], // Base Stations
     loading: false
   }),
   getters: {
     totalStations: (state) => state.stations.length,
-    baseStations: (state) => state.stations.filter(r => r.hardware_type === 'BASE').length,
     activeRovers: (state) => state.stations.filter(r => 
-      r.hardware_type === 'ROVER' && 
       r.status === 'ACTIVE' && 
       (Math.abs(Number(r.deformation)) || 0) < 0.1
     ).length,
     maintenanceRovers: (state) => state.stations.filter(r => 
-      r.hardware_type === 'ROVER' && 
       (r.status === 'MAINTENANCE' || (Math.abs(Number(r.deformation)) || 0) >= 0.1)
     ).length,
-    offlineRovers: (state) => state.stations.filter(r => r.hardware_type === 'ROVER' && r.status === 'INACTIVE').length
+    offlineRovers: (state) => state.stations.filter(r => r.status === 'INACTIVE').length
   },
   actions: {
     async fetchStations() {
@@ -60,6 +59,30 @@ export const useStationStore = defineStore('station', {
     async deleteStation(id) {
       await StationService.delete(id);
       await this.fetchStations();
+    },
+    async fetchBaseStations() {
+      this.loading = true;
+      try {
+        const response = await BaseStationService.getAll();
+        this.baseStations = response.data || [];
+      } catch (error) {
+        console.error('Store fetchBaseStations error:', error);
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+    async createBaseStation(data) {
+      await BaseStationService.create(data);
+      await this.fetchBaseStations();
+    },
+    async updateBaseStation(id, data) {
+      await BaseStationService.update(id, data);
+      await this.fetchBaseStations();
+    },
+    async deleteBaseStation(id) {
+      await BaseStationService.delete(id);
+      await this.fetchBaseStations();
     }
   }
 });

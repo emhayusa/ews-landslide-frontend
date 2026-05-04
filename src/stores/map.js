@@ -107,6 +107,8 @@ export const useMapStore = defineStore('mapStore', {
     userLocation: null, // Store {lon, lat} for 3D synchronization
     stationSource: shallowRef(null),
     stationLayer: shallowRef(null),
+    baseStationSource: shallowRef(null),
+    baseStationLayer: shallowRef(null),
 
     /* ================= OPERATIONAL LAYERS ================= */
     operational: [],
@@ -657,7 +659,7 @@ export const useMapStore = defineStore('mapStore', {
               attributes: {
                 'Station ID': station.station_id,
                 'Nama': station.name,
-                'Jenis': station.hardware_type,
+                'Jenis': station._type,
                 'Status': station.status,
                 'Lokasi': station.location
               }
@@ -966,67 +968,114 @@ export const useMapStore = defineStore('mapStore', {
     /* ======================================================
      * STATION MARKERS
      * ====================================================== */
-    setStations(stations) {
-      if (!this.map) return
+    setStations(rovers, bases = []) {
+      if (!this.map) return;
 
-      console.log(`[Map] Refreshing ${stations.length} stations...`);
+      console.log(`[Map] Updating stations: ${rovers.length} rovers, ${bases.length} bases`);
 
+      // 1. ROVERS LAYER
       if (!this.stationSource) {
-        this.stationSource = new VectorSource()
-      }
-
-      if (!this.stationLayer) {
+        this.stationSource = new VectorSource();
         this.stationLayer = new VectorLayer({
           source: this.stationSource,
-          zIndex: 2000,
-        })
-        this.map.addLayer(this.stationLayer)
+          zIndex: 10,
+          title: 'Rover Stations'
+        });
+        this.map.addLayer(this.stationLayer);
       }
+      this.stationSource.clear();
 
-      // Force a full clear and notify listeners
-      this.stationSource.clear(true)
+      // 2. BASES LAYER
+      if (!this.baseStationSource) {
+        this.baseStationSource = new VectorSource();
+        this.baseStationLayer = new VectorLayer({
+          source: this.baseStationSource,
+          zIndex: 9,
+          title: 'Base Stations'
+        });
+        this.map.addLayer(this.baseStationLayer);
+      }
+      this.baseStationSource.clear();
 
-      const roverCount = { count: 0 }
       let addedCount = 0;
+      let roverCount = { count: 0 };
 
-      stations.forEach((st) => {
+      // Process Rovers
+      rovers.forEach((st) => {
+        if (!st.latitude || !st.longitude) return;
         try {
-          if (!st.longitude || !st.latitude) return;
+          roverCount.count++;
+          const label = `R${roverCount.count}`;
 
-          const coords = fromLonLat([Number(st.longitude), Number(st.latitude)]);
           const feature = new Feature({
-            geometry: new OLPoint(coords),
-            station: st
-          })
+            geometry: new OLPoint(fromLonLat([Number(st.longitude), Number(st.latitude)])),
+            station: { ...st, _type: 'ROVER' },
+            type: 'ROVER',
+            label: label
+          });
 
-          let label = ""
-          if (st.hardware_type === 'BASE') {
-            label = "B"
-          } else {
-            roverCount.count++
-            label = `R${roverCount.count}`
-          }
-
-          feature.setStyle(this.getStationStyle(st, label))
-          this.stationSource.addFeature(feature)
+          feature.setStyle(this.getStationStyle(st, label, 'ROVER'));
+          this.stationSource.addFeature(feature);
           addedCount++;
         } catch (err) {
-          console.error(`[Map] Error adding station ${st.name}:`, err);
+          console.error(`[Map] Error adding rover ${st.name}:`, err);
         }
-      })
+      });
 
-      console.log(`[Map] Rendered ${addedCount} stations.`);
+      // Process Bases
+      bases.forEach((st) => {
+        if (!st.lat || !st.long) return;
+        try {
+          const feature = new Feature({
+            geometry: new OLPoint(fromLonLat([Number(st.long), Number(st.lat)])),
+            station: { ...st, _type: 'BASE', name: st.nama, station_id: st.kode }, // Map BS to Station-like object for popup
+            type: 'BASE'
+          });
+
+          feature.setStyle(this.getStationStyle(st, "B", 'BASE'));
+          this.baseStationSource.addFeature(feature);
+          addedCount++;
+        } catch (err) {
+          console.error(`[Map] Error adding base station ${st.nama}:`, err);
+        }
+      });
+
+      console.log(`[Map] Rendered ${addedCount} total stations.`);
       this.map.render();
-      this.map.renderSync();
     },
 
-    getStationStyle(st, label) {
+    updateStationMarker(st) {
+      if (!this.stationSource) return;
+
+      const features = this.stationSource.getFeatures();
+      const feature = features.find(f => {
+        const s = f.get('station');
+        return s && (s.id === st.id || s.station_id === st.station_id);
+      });
+
+      if (feature) {
+        // Update the station data in feature
+        feature.set('station', { ...st, _type: 'ROVER' });
+        
+        // Re-apply style to reflect potential color changes
+        // We need to retrieve the label somehow. 
+        // For simplicity, let's store the label in the feature.
+        const label = feature.get('label') || 'R';
+        feature.setStyle(this.getStationStyle(st, label, 'ROVER'));
+      }
+    },
+
+    getStationStyle(st, label, type) {
       let color = '#64748b' // Offline
-      if (st.hardware_type === 'BASE') {
+      if (type === 'BASE') {
         color = '#1d4ed8' // Base Blue
       } else {
-        if (st.status === 'ACTIVE') color = '#16a34a' // Normal Green
-        else if (st.status === 'MAINTENANCE') color = '#ef4444' // Bahaya Red
+        const isDanger = st.status === 'MAINTENANCE' || (Math.abs(Number(st.deformation)) || 0) >= 0.1
+        if (isDanger) {
+          color = '#ef4444' // Bahaya Red
+        } else if (st.status === 'ACTIVE') {
+          color = '#16a34a' // Normal Green
+        }
       }
 
       return new Style({

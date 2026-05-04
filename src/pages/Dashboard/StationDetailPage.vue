@@ -273,20 +273,30 @@ onUnmounted(() => {
   // For now, let's just keep it simple.
 });
 
-// Watch for streaming data to update current view
+// Watch for streaming data (Weather/MQTT)
 watch(() => streamStore.latestData, (newData) => {
   if (newData && (newData.station_id === stationId.value || newData.id === currentStation.value.id)) {
     const params = newData.payload.params;
     const targetStation = stationStore.stations.find(s => s.station_id === newData.station_id || s.id === newData.id);
     
     if (targetStation) {
-      targetStation.deformation = (params.deformasi || 0).toFixed(4);
       targetStation.battery = (params.Baterai || 0).toFixed(2);
       targetStation.solar = (params.Solar || 0).toFixed(2);
       targetStation.rain = (params.bucket || 0).toFixed(1);
       targetStation.lastUpdate = date.formatDate(new Date(), 'HH:mm:ss');
-      
-      console.log('[Detail] Updated live data for station:', stationId.value);
+    }
+  }
+});
+
+// Watch for streaming data (Deformation/GNSS)
+watch(() => streamStore.latestSensorData, (newData) => {
+  if (newData) {
+    // Check if message is for this station
+    const targetStation = stationStore.stations.find(s => s.station_id === stationId.value);
+    if (targetStation) {
+      targetStation.deformation = (newData.offset || 0).toFixed(4);
+      targetStation.lastUpdate = date.formatDate(new Date(), 'HH:mm:ss');
+      console.log('[Detail] Updated live deformation for station:', stationId.value);
     }
   }
 });

@@ -26,7 +26,14 @@ const routes = [
     path: '/stations',
     component: () => import('layouts/MainLayout.vue'),
     children: [
-      { path: '', component: () => import('pages/Stations/StationManagementPage.vue'), meta: { title: 'Manajemen Station' } }
+      { path: '', component: () => import('pages/Stations/StationManagementPage.vue'), meta: { title: 'Manajemen Station', roles: ['admin', 'operator'] } }
+    ]
+  },
+  {
+    path: '/sites',
+    component: () => import('layouts/MainLayout.vue'),
+    children: [
+      { path: '', component: () => import('pages/Sites/SiteManagementPage.vue'), meta: { title: 'Manajemen Site', role: ['admin', 'operator'] } }
     ]
   },
   {

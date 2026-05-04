@@ -81,10 +81,29 @@
               <label class="text-slate-800 block q-mb-sm" style="font-size: 14px">Role</label>
               <q-select
                 v-model="newUser.role"
-                :options="['admin', 'operator']"
+                :options="['admin', 'operator', 'mitra']"
                 filled
                 dense
                 class="custom-input-filled text-capitalize"
+              />
+            </div>
+          </div>
+
+          <!-- row untuk Site Assignment (khusus mitra) -->
+          <div v-if="newUser.role === 'mitra'" class="row q-mb-lg">
+            <div class="col-12">
+              <label class="text-slate-800 block q-mb-sm" style="font-size: 14px">Akses Site (Khusus Mitra)</label>
+              <q-select
+                v-model="newUser.site_ids"
+                :options="siteOptions"
+                multiple
+                use-chips
+                filled
+                dense
+                emit-value
+                map-options
+                placeholder="Pilih site yang bisa diakses mitra"
+                class="custom-input-filled"
               />
             </div>
           </div>
@@ -135,13 +154,24 @@
           <template v-slot:body-cell-role="props">
             <q-td :props="props">
               <q-badge
-                :color="props.value === 'admin' ? 'purple-1' : 'cyan-1'"
-                :text-color="props.value === 'admin' ? 'purple-8' : 'cyan-8'"
+                :color="props.value === 'admin' ? 'purple-1' : (props.value === 'mitra' ? 'amber-1' : 'cyan-1')"
+                :text-color="props.value === 'admin' ? 'purple-8' : (props.value === 'mitra' ? 'amber-8' : 'cyan-8')"
                 class="q-px-md q-py-xs text-weight-bold uppercase"
                 rounded
               >
                 {{ props.value }}
               </q-badge>
+            </q-td>
+          </template>
+
+          <template v-slot:body-cell-sites="props">
+            <q-td :props="props">
+              <div class="q-gutter-xs">
+                <q-badge v-for="site in props.row.sites" :key="site.id" color="blue-1" text-color="blue-8" class="q-px-sm">
+                  {{ site.nama }}
+                </q-badge>
+                <div v-if="!props.row.sites?.length" class="text-grey-5 italic text-caption">No sites assigned</div>
+              </div>
             </q-td>
           </template>
 
@@ -184,9 +214,11 @@
 import { ref, reactive, onMounted, computed } from 'vue';
 import { useQuasar } from 'quasar';
 import { useUserStore } from 'src/stores/user';
+import { useSiteStore } from 'src/stores/site';
 
 const $q = useQuasar();
 const userStore = useUserStore();
+const siteStore = useSiteStore();
 
 const showAddDialog = ref(false);
 const isEdit = ref(false);
@@ -197,8 +229,13 @@ const newUser = reactive({
   username: '',
   email: '',
   password: '',
-  role: 'operator'
+  role: 'operator',
+  site_ids: []
 });
+
+const siteOptions = computed(() => 
+  siteStore.sites.map(s => ({ label: s.nama, value: s.id }))
+);
 
 const rows = computed(() => userStore.users);
 const loading = computed(() => userStore.loading);
@@ -206,6 +243,9 @@ const loading = computed(() => userStore.loading);
 onMounted(() => {
   userStore.fetchUsers().catch(() => {
     $q.notify({ type: 'negative', message: 'Gagal memuat data user' });
+  });
+  siteStore.fetchSites().catch(() => {
+    $q.notify({ type: 'negative', message: 'Gagal memuat data site' });
   });
 });
 
@@ -217,7 +257,8 @@ const openAddDialog = () => {
     username: '',
     email: '',
     password: '',
-    role: 'operator'
+    role: 'operator',
+    site_ids: []
   });
   showAddDialog.value = true;
 };
@@ -230,7 +271,8 @@ const openEditDialog = (row) => {
     username: row.username,
     email: row.email,
     password: '', // Leave empty for no change
-    role: row.role.toLowerCase()
+    role: row.role.toLowerCase(),
+    site_ids: row.site_ids || []
   });
   showAddDialog.value = true;
 };
@@ -247,7 +289,8 @@ const saveUser = async () => {
       username: newUser.username,
       email: newUser.email,
       password: newUser.password || undefined,
-      role: newUser.role.toLowerCase()
+      role: newUser.role.toLowerCase(),
+      site_ids: newUser.role === 'mitra' ? newUser.site_ids : []
     };
 
     if (isEdit.value) {
@@ -289,6 +332,7 @@ const columns = [
   { name: 'username', align: 'left', label: 'USERNAME', field: 'username' },
   { name: 'email', align: 'left', label: 'EMAIL', field: 'email' },
   { name: 'role', align: 'center', label: 'ROLE', field: 'role' },
+  { name: 'sites', align: 'left', label: 'SITE ACCESS', field: 'sites' },
   { name: 'dibuat', align: 'left', label: 'DIBUAT', field: 'dibuat' },
   { name: 'aksi', align: 'center', label: 'AKSI', field: 'aksi' }
 ];
@@ -332,6 +376,7 @@ const columns = [
 .bg-grey-1 { background-color: #f8fafc; }
 .bg-purple-1 { background-color: #f5f3ff; }
 .bg-cyan-1 { background-color: #ecfeff; }
+.bg-amber-1 { background-color: #fffbeb; }
 .bg-red-1 { background-color: #fef2f2; }
 
 .border-radius-lg {

@@ -21,7 +21,7 @@
       <q-card-section class="q-px-lg q-py-lg">
         <div class="chart-container shadow-sm">
           <apexchart
-            type="area"
+            type="scatter"
             height="350"
             :options="options"
             :series="series"
@@ -71,12 +71,18 @@ const options = computed(() => ({
         speed: 1000
       }
     },
-    zoom: { enabled: false }
+    zoom: { enabled: false },
+    sparkline: { enabled: false },
+    padding: {
+      left: 30,
+      right: 30
+    }
   },
   xaxis: {
     type: 'datetime',
     labels: {
       format: 'HH:mm:ss',
+      datetimeUTC: false, // Use local time (GMT+7 if user is in that zone)
       style: { colors: '#94a3b8', fontSize: '10px' }
     },
     axisBorder: { show: false },
@@ -87,39 +93,33 @@ const options = computed(() => ({
     }
   },
   yaxis: {
+    labels: {
+      formatter: (val) => val.toFixed(4) + 'm',
+      style: { colors: '#94a3b8', fontSize: '10px' },
+      minWidth: 70,
+      offsetX: -5
+    },
     title: {
       text: 'Offset (m)',
+      rotate: -90,
+      offsetX: -10,
       style: { color: '#64748b', fontSize: '11px', fontWeight: 600 }
-    },
-    labels: {
-      formatter: (val) => val.toFixed(3) + 'm',
-      style: { colors: '#94a3b8', fontSize: '10px' }
     }
   },
   stroke: {
-    curve: 'smooth',
-    width: 3
+    show: false,
+    width: 0
   },
-  fill: {
-    type: 'gradient',
-    gradient: {
-      shadeIntensity: 1,
-      opacityFrom: 0.45,
-      opacityTo: 0.05,
-      stops: [50, 100]
-    }
-  },
-  colors: ['#8b5cf6'], // Purple color from user image
+  colors: ['#818cf8'], // Soft purple color from image
   grid: {
     borderColor: '#f1f5f9',
     strokeDashArray: 4,
   },
   markers: {
-    size: 4,
-    colors: ['#8b5cf6'],
-    strokeColors: '#fff',
-    strokeWidth: 2,
-    hover: { size: 6 }
+    size: 5,
+    colors: ['#818cf8'],
+    strokeWidth: 0,
+    hover: { size: 7 }
   },
   tooltip: {
     x: { format: 'HH:mm:ss' }

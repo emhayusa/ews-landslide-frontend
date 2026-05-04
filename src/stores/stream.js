@@ -3,11 +3,9 @@ import { ref } from 'vue';
 
 export const useStreamStore = defineStore('streamStore', () => {
   const socket = ref(null);
-  const sensorSocket = ref(null);
   const latestData = ref(null);
   const latestSensorData = ref(null);
   const isConnected = ref(false);
-  const isSensorConnected = ref(false);
 
   function connect() {
     if (socket.value) return;
@@ -34,7 +32,16 @@ export const useStreamStore = defineStore('streamStore', () => {
     socket.value.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        latestData.value = data;
+        
+        // Handle different message types from the single backend WS
+        if (data.type === 'deformation') {
+          latestSensorData.value = data.data; // The payload from sensor WS
+        } else if (data.type === 'weather') {
+          latestData.value = data; // The payload from MQTT
+        } else {
+          // Fallback for older messages or unknown types
+          latestData.value = data;
+        }
       } catch (err) {
         console.error('[WS] Parse error:', err);
       }
@@ -53,49 +60,10 @@ export const useStreamStore = defineStore('streamStore', () => {
     };
   }
 
-  function connectSensor() {
-    if (sensorSocket.value) return;
-
-    const wsUrl = 'ws://36.92.41.75:8000/ws/data?ref=CSEM&obs=UNGR';
-    console.log('[Sensor WS] Connecting to:', wsUrl);
-    
-    sensorSocket.value = new WebSocket(wsUrl);
-
-    sensorSocket.value.onopen = () => {
-      console.log('[Sensor WS] Connected');
-      isSensorConnected.value = true;
-    };
-
-    sensorSocket.value.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        latestSensorData.value = data;
-      } catch (err) {
-        console.error('[Sensor WS] Parse error:', err);
-      }
-    };
-
-    sensorSocket.value.onclose = () => {
-      console.log('[Sensor WS] Disconnected, retrying in 5s...');
-      isSensorConnected.value = false;
-      sensorSocket.value = null;
-      setTimeout(connectSensor, 5000);
-    };
-
-    sensorSocket.value.onerror = (err) => {
-      console.error('[Sensor WS] Error:', err);
-      sensorSocket.value.close();
-    };
-  }
-
   function disconnect() {
     if (socket.value) {
       socket.value.close();
       socket.value = null;
-    }
-    if (sensorSocket.value) {
-      sensorSocket.value.close();
-      sensorSocket.value = null;
     }
   }
 
@@ -103,9 +71,8 @@ export const useStreamStore = defineStore('streamStore', () => {
     latestData,
     latestSensorData,
     isConnected,
-    isSensorConnected,
+    isSensorConnected: isConnected, // Map to same status
     connect,
-    connectSensor,
     disconnect
   };
 });

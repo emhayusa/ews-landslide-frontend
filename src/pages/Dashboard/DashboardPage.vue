@@ -33,11 +33,11 @@
             <!-- Floating Legend -->
             <div class="legend-box shadow-2">
               <div class="text-weight-bold text-caption q-mb-sm border-bottom-light q-pb-xs">Legenda</div>
-              <div v-for="l in legendItems" :key="l.label" class="flex items-center q-mb-sm no-wrap">
-                <div class="marker-dot q-mr-sm" :class="'bg-' + l.color">
+              <div v-for="l in legendItems" :key="l.label" class="flex items-center q-mb-sm no-wrap cursor-pointer hover-opacity" @click="toggleLayer(l)">
+                <div class="marker-dot q-mr-sm" :class="[l.visible !== false ? 'bg-' + l.color : 'bg-grey-4']">
                    <div v-if="l.label.includes('Base')" class="text-white text-bold" style="font-size: 8px">B</div>
                 </div>
-                <div class="text-caption text-slate-700">{{ l.label }} ({{ l.count }})</div>
+                <div class="text-caption" :class="[l.visible !== false ? 'text-slate-700' : 'text-grey-4 text-strike']">{{ l.label }} ({{ l.count }})</div>
               </div>
             </div>
 
@@ -69,12 +69,12 @@
               <q-badge v-else color="grey-2" text-color="grey-6" label="OFFLINE" class="q-ml-sm text-bold" style="font-size: 9px;" />
             </div>
             <div class="text-caption text-grey-5 uppercase text-weight-medium" style="font-size: 11px;">
-               2 Warning
+               {{ stationStore.maintenanceRovers }} Warning
             </div>
           </q-card-section>
           
           <q-card-section class="q-pa-md">
-            <div class="text-caption text-grey-5 q-mb-md font-weight-600">SEMARANG REGENCY</div>
+            <div class="text-caption text-grey-5 q-mb-md font-weight-600 uppercase">Region Overview</div>
             
             <q-table
               flat
@@ -89,9 +89,9 @@
               <template v-slot:body-cell-pairing="props">
                 <q-td :props="props">
                   <div class="flex items-center no-wrap">
-                    <span class="text-blue-6 text-bold text-caption">BASE</span>
+                    <span class="text-blue-6 text-bold text-caption uppercase">{{ props.row.base_code }}</span>
                     <q-icon name="swap_horiz" size="18px" class="q-mx-xs text-grey-4" />
-                    <span class="text-purple-5 text-bold text-caption">{{ props.value }}</span>
+                    <span class="text-purple-5 text-bold text-caption uppercase">{{ props.row.obs_code }}</span>
                   </div>
                 </q-td>
               </template>
@@ -103,10 +103,33 @@
                   </span>
                 </q-td>
               </template>
-              
-              <template v-slot:body-cell-rain="props">
+
+              <template v-slot:body-cell-rain_combined="props">
                 <q-td :props="props">
-                  <span :class="props.row.status === 'BAHAYA' ? 'text-red-6' : (props.row.status === 'NORMAL' ? 'text-green-6' : 'text-slate-700')" class="text-weight-bold" style="font-size: 11px">
+                  <div class="flex items-center no-wrap">
+                    <span class="text-slate-700 text-weight-bold" style="font-size: 11px">{{ props.row.rain }}</span>
+                    <span class="text-grey-4 q-mx-xs">/</span>
+                    <span class="text-slate-500" style="font-size: 10px">{{ props.row.rain_daily }}</span>
+                    <span class="text-grey-5 q-ml-xs" style="font-size: 9px">mm</span>
+                  </div>
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-power_combined="props">
+                <q-td :props="props">
+                  <div class="flex items-center no-wrap">
+                    <q-icon name="bolt" size="12px" :color="props.row.battery < 12 ? 'red' : 'amber-8'" class="q-mr-xs" />
+                    <span class="text-slate-700 text-weight-bold" style="font-size: 11px">{{ props.row.battery }}</span>
+                    <span class="text-grey-4 q-mx-xs">/</span>
+                    <span class="text-slate-500" style="font-size: 10px">{{ props.row.solar }}</span>
+                    <span class="text-grey-5 q-ml-xs" style="font-size: 9px">V</span>
+                  </div>
+                </q-td>
+              </template>
+
+              <template v-slot:body-cell-accel="props">
+                <q-td :props="props">
+                  <span class="text-slate-700 text-weight-bold" style="font-size: 11px">
                     {{ props.value }}
                   </span>
                 </q-td>
@@ -203,9 +226,12 @@ console.log('[Dashboard] Initializing...');
 
 async function refreshMapData() {
   try {
-    await stationStore.fetchStations();
+    await Promise.all([
+      stationStore.fetchStations(),
+      stationStore.fetchBaseStations()
+    ]);
     if (mapStore.map) {
-      mapStore.setStations(stationStore.stations);
+      mapStore.setStations(stationStore.stations, stationStore.baseStations);
     }
     $q.notify({
       message: 'Data peta berhasil diperbarui',
@@ -226,15 +252,17 @@ async function refreshMapData() {
 
 onMounted(async () => {
   console.log('[Dashboard] Mounted, fetching stations & connecting WS...');
-  await stationStore.fetchStations();
+  await Promise.all([
+    stationStore.fetchStations(),
+    stationStore.fetchBaseStations()
+  ]);
   streamStore.connect();
-  streamStore.connectSensor();
   
-  console.log('[Dashboard] Stations fetched:', stationStore.stations.length);
+  console.log('[Dashboard] Data fetched:', stationStore.stations.length, 'rovers,', stationStore.baseStations.length, 'bases');
   // Ensure map is updated if already ready
   if (mapStore.map) {
     console.log('[Dashboard] Map already ready, setting stations...');
-    mapStore.setStations(stationStore.stations);
+    mapStore.setStations(stationStore.stations, stationStore.baseStations);
   }
 });
 
@@ -257,24 +285,28 @@ watch(() => streamStore.latestData, (newData) => {
       // Keep existing deformation if we are getting it from the other stream, 
       // or update if this stream provides a more specific one
       if (params.deformasi !== undefined) {
-        targetStation.deformation = (params.deformasi || 0).toFixed(3);
+        targetStation.deformation = Math.abs(params.deformasi || 0).toFixed(3);
       }
       targetStation.battery = (params.Baterai || 0).toFixed(2);
       targetStation.solar = (params.Solar || 0).toFixed(2);
-      targetStation.rain = (params.bucket || 0).toFixed(1);
+      targetStation.rain = (params.curah_hujan_hourly || 0).toFixed(1);
+      targetStation.rain_daily = (params.curah_hujan_daily || 0).toFixed(1);
       targetStation.lastUpdate = date.formatDate(new Date(), 'HH:mm:ss');
       
       // Update history for chart
       if (params.deformasi !== undefined) {
         stationStore.addHistory(targetStation.station_id, {
           x: new Date().getTime(),
-          y: Number(params.deformasi.toFixed(3))
+          y: Number(Math.abs(params.deformasi).toFixed(3))
         });
       }
       
       if (mapStore.selectedStation && mapStore.selectedStation.id === targetStation.id) {
         mapStore.selectedStation = { ...targetStation };
       }
+      
+      // Update marker color on map
+      mapStore.updateStationMarker(targetStation);
     }
   }
 });
@@ -289,13 +321,16 @@ watch(() => streamStore.latestSensorData, (newData) => {
       // Calculate deformation: Current Distance - Initial Distance (in meters)
       const diffMeters = newData.distance - INITIAL_DISTANCE;
       
-      targetStation.deformation = diffMeters.toFixed(3);
+      targetStation.deformation = Math.abs(diffMeters).toFixed(3);
       targetStation.lastUpdate = date.formatDate(new Date(), 'HH:mm:ss');
+      
+      // Update marker color on map
+      mapStore.updateStationMarker(targetStation);
       
       // Update history for chart
       stationStore.addHistory('UNGR', {
         x: new Date().getTime(),
-        y: Number(diffMeters.toFixed(3))
+        y: Number(Math.abs(diffMeters).toFixed(3))
       });
       
       if (mapStore.selectedStation && mapStore.selectedStation.station_id === 'UNGR') {
@@ -307,32 +342,41 @@ watch(() => streamStore.latestSensorData, (newData) => {
 
 // Watch for map readiness
 watch(() => mapStore.map, (map) => {
-  if (map && stationStore.stations.length > 0) {
+  if (map && (stationStore.stations.length > 0 || stationStore.baseStations.length > 0)) {
     console.log('[Dashboard] Map became ready, setting stations...');
-    mapStore.setStations(stationStore.stations);
+    mapStore.setStations(stationStore.stations, stationStore.baseStations);
   }
 });
 
 const summaryCards = computed(() => [
-  { label: 'Base Station', value: stationStore.baseStations, icon: 'satellite_alt', color: 'blue-6' },
-  { label: 'Rover Station', value: stationStore.stations.filter(s => s.hardware_type === 'ROVER').length, icon: 'cell_tower', color: 'purple-4' },
+  { label: 'Base Station', value: stationStore.baseStations.length, icon: 'satellite_alt', color: 'blue-6' },
+  { label: 'Rover Station', value: stationStore.stations.length, icon: 'cell_tower', color: 'purple-4' },
   { label: 'Normal / Active', value: stationStore.activeRovers, icon: 'check_circle', color: 'green-5' },
   { label: 'Danger / Bahaya', value: stationStore.maintenanceRovers, icon: 'campaign', color: 'red-5' },
   { label: 'Offline', value: stationStore.offlineRovers, icon: 'wifi_off', color: 'blue-5' }
 ]);
 
 const legendItems = computed(() => [
-  { label: 'Base Station', color: 'blue-6', count: stationStore.baseStations },
-  { label: 'Active', color: 'green-5', count: stationStore.activeRovers },
-  { label: 'Danger / Bahaya', color: 'red-5', count: stationStore.maintenanceRovers },
-  { label: 'Offline', color: 'grey-6', count: stationStore.offlineRovers }
+  { label: 'Base Station', color: 'blue-6', count: stationStore.baseStations.length, type: 'BASE', visible: mapStore.baseStationLayer?.getVisible() },
+  { label: 'Active', color: 'green-5', count: stationStore.activeRovers, type: 'ROVER', visible: mapStore.stationLayer?.getVisible() },
+  { label: 'Danger / Bahaya', color: 'red-5', count: stationStore.maintenanceRovers, type: 'ROVER', visible: mapStore.stationLayer?.getVisible() },
+  { label: 'Offline', color: 'grey-6', count: stationStore.offlineRovers, type: 'ROVER', visible: mapStore.stationLayer?.getVisible() }
 ]);
+
+function toggleLayer(item) {
+  if (item.type === 'BASE') {
+    if (mapStore.baseStationLayer) mapStore.baseStationLayer.setVisible(!mapStore.baseStationLayer.getVisible());
+  } else if (item.type === 'ROVER') {
+    if (mapStore.stationLayer) mapStore.stationLayer.setVisible(!mapStore.stationLayer.getVisible());
+  }
+}
 
 const columns = [
   { name: 'pairing', align: 'left', label: 'STATION / PAIRING', field: 'name' },
   { name: 'deformation', align: 'left', label: 'DEFORMATION (m)', field: 'deformation' },
   { name: 'accel', align: 'left', label: 'ACCELEROMETER (m/s²)', field: 'accel' },
-  { name: 'rain', align: 'left', label: 'RAIN GAUGE (mm/h)', field: 'rain' },
+  { name: 'rain_combined', align: 'left', label: 'RAIN (H / D)', field: 'rain' },
+  { name: 'power_combined', align: 'left', label: 'POWER (B / S)', field: 'battery' },
   { name: 'lastUpdate', align: 'left', label: 'LAST UPDATE', field: 'lastUpdate' },
   { name: 'status', align: 'center', label: 'STATUS', field: 'status' },
   { name: 'chart', align: 'center', label: 'CHART', field: 'chart' },
@@ -341,13 +385,17 @@ const columns = [
 
 const rows = computed(() => {
   return stationStore.stations
-    .filter(st => st.hardware_type === 'ROVER')
     .map(st => ({
       ...st,
+      base_code: st.base_station?.kode || 'BASE',
+      obs_code: st.station_id,
       pairing: st.name,
       deformation: st.deformation || '0.000',
-      accel: st.accel || 'N/A',
+      accel: 'N/A',
       rain: st.rain || '0.0',
+      rain_daily: st.rain_daily || '0.0',
+      battery: st.battery || '0.0',
+      solar: st.solar || '0.0',
       lastUpdate: st.lastUpdate || date.formatDate(st.updated_at, 'HH:mm:ss'),
       status: (Math.abs(Number(st.deformation)) >= 0.1 || st.status === 'MAINTENANCE') ? 'BAHAYA' : (st.status === 'ACTIVE' ? 'NORMAL' : 'OFFLINE'),
       push: 'IDLE'
