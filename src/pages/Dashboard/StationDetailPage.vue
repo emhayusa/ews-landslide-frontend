@@ -107,7 +107,7 @@
             </div>
             <div class="flex items-end q-gutter-x-xs">
               <div class="text-h4 text-weight-bold">{{ currentStation.deformation || '0.0000' }}</div>
-              <div class="text-caption q-pb-xs opacity-80">cm</div>
+              <div class="text-caption q-pb-xs opacity-80">m</div>
             </div>
             <div class="text-caption q-mt-md opacity-70">
               Sensor GNSS Active
