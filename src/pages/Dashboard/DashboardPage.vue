@@ -68,8 +68,20 @@
               <q-badge v-if="streamStore.isConnected" color="green-1" text-color="green-7" label="LIVE" class="q-ml-sm text-bold" style="font-size: 9px;" />
               <q-badge v-else color="grey-2" text-color="grey-6" label="OFFLINE" class="q-ml-sm text-bold" style="font-size: 9px;" />
             </div>
-            <div class="text-caption text-grey-5 uppercase text-weight-medium" style="font-size: 11px;">
-               {{ stationStore.maintenanceRovers }} Warning
+            <div class="flex items-center q-gutter-x-sm">
+              <span class="text-caption text-grey-5 uppercase text-weight-medium" style="font-size: 11px; margin-right: 8px;">
+                 {{ stationStore.maintenanceRovers }} Warning
+              </span>
+              <q-btn
+                outline
+                dense
+                no-caps
+                color="indigo-6"
+                icon="file_download"
+                label="Unduh Semua Data (CSV)"
+                class="q-px-sm border-radius-sm text-weight-bold text-caption transition-hover"
+                @click="downloadAllData"
+              />
             </div>
           </q-card-section>
           
@@ -82,7 +94,7 @@
               :columns="columns"
               row-key="pairing"
               hide-pagination
-              class="premium-table"
+              :class="['premium-table', authStore.user?.role === 'bpbd' ? 'bpbd-table' : '']"
               :pagination="{ rowsPerPage: 0 }"
               @row-click="onRowClick"
             >
@@ -111,6 +123,9 @@
                     <span class="text-grey-4 q-mx-xs">/</span>
                     <span class="text-slate-500" style="font-size: 10px">{{ props.row.rain_daily }}</span>
                     <span class="text-grey-5 q-ml-xs" style="font-size: 9px">mm</span>
+                    <q-btn flat round dense size="xs" icon="show_chart" color="blue-6" class="q-ml-sm opacity-hover" @click.stop="openRainChart(props.row)">
+                      <q-tooltip>Grafik Curah Hujan</q-tooltip>
+                    </q-btn>
                   </div>
                 </q-td>
               </template>
@@ -161,7 +176,9 @@
                 <q-td :props="props">
                   <div class="flex items-center justify-center q-gutter-x-sm">
                     <q-btn flat round dense size="xs" icon="bar_chart" color="cyan-6" class="bg-cyan-1 q-pa-xs border-radius-sm" @click.stop="openChart(props.row)" />
-                    <q-btn flat round dense size="xs" icon="system_update_alt" color="amber-7" class="bg-amber-1 q-pa-xs border-radius-sm" />
+                    <q-btn flat round dense size="xs" icon="system_update_alt" color="amber-7" class="bg-amber-1 q-pa-xs border-radius-sm" @click.stop="downloadData(props.row)">
+                      <q-tooltip>Unduh Data (CSV)</q-tooltip>
+                    </q-btn>
                   </div>
                 </q-td>
               </template>
@@ -194,6 +211,7 @@
       v-model="showChartDialog"
       :station-id="selectedStationForChart?.station_id"
       :station-name="selectedStationForChart?.name"
+      :chart-type="activeChartType"
     />
   </q-page>
 </template>
@@ -206,6 +224,7 @@ import { useRouter } from 'vue-router';
 import { useStationStore } from "src/stores/station";
 import { useMapStore } from "src/stores/map";
 import { useStreamStore } from "src/stores/stream";
+import { useAuthStore } from "src/stores/auth";
 import { useQuasar, date } from 'quasar';
 
 const $q = useQuasar();
@@ -213,13 +232,108 @@ const router = useRouter();
 const stationStore = useStationStore();
 const mapStore = useMapStore();
 const streamStore = useStreamStore();
+const authStore = useAuthStore();
 
 const showChartDialog = ref(false);
 const selectedStationForChart = ref(null);
+const activeChartType = ref('deformation');
 
 function openChart(row) {
+  activeChartType.value = 'deformation';
   selectedStationForChart.value = row;
   showChartDialog.value = true;
+}
+
+function openRainChart(row) {
+  activeChartType.value = 'rainfall';
+  selectedStationForChart.value = row;
+  showChartDialog.value = true;
+}
+
+function downloadCSV(csvContent, filename) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function downloadData(row) {
+  const headers = ['Station/Pairing', 'Base Code', 'Obs Code', 'Deformation (m)', 'Rain hourly (mm)', 'Rain daily (mm)', 'Battery (V)', 'Solar (V)', 'Last Update', 'Status'];
+  const values = [
+    row.pairing,
+    row.base_code,
+    row.obs_code,
+    row.deformation,
+    row.rain,
+    row.rain_daily,
+    row.battery,
+    row.solar,
+    row.lastUpdate,
+    row.status
+  ];
+  
+  const csvContent = [
+    headers.join(','),
+    values.map(val => `"${String(val).replace(/"/g, '""')}"`).join(',')
+  ].join('\r\n');
+  
+  downloadCSV(csvContent, `station-${row.obs_code}-metrics.csv`);
+  
+  $q.notify({
+    message: `Data station ${row.obs_code} berhasil diunduh`,
+    color: 'positive',
+    icon: 'download',
+    position: 'top',
+    timeout: 2000
+  });
+}
+
+function downloadAllData() {
+  if (!rows.value || rows.value.length === 0) {
+    $q.notify({
+      message: 'Tidak ada data untuk diunduh',
+      color: 'warning',
+      icon: 'warning',
+      position: 'top'
+    });
+    return;
+  }
+  
+  const headers = ['Station/Pairing', 'Base Code', 'Obs Code', 'Deformation (m)', 'Rain hourly (mm)', 'Rain daily (mm)', 'Battery (V)', 'Solar (V)', 'Last Update', 'Status'];
+  const csvRows = [headers.join(',')];
+  
+  rows.value.forEach(row => {
+    const values = [
+      row.pairing,
+      row.base_code,
+      row.obs_code,
+      row.deformation,
+      row.rain,
+      row.rain_daily,
+      row.battery,
+      row.solar,
+      row.lastUpdate,
+      row.status
+    ];
+    csvRows.push(values.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','));
+  });
+  
+  const csvContent = csvRows.join('\r\n');
+  const timestamp = date.formatDate(new Date(), 'YYYYMMDD-HHmmss');
+  downloadCSV(csvContent, `all-stations-metrics-${timestamp}.csv`);
+  
+  $q.notify({
+    message: 'Semua data station berhasil diunduh',
+    color: 'positive',
+    icon: 'download',
+    position: 'top',
+    timeout: 2000
+  });
 }
 
 console.log('[Dashboard] Initializing...');
@@ -403,6 +517,16 @@ const rows = computed(() => {
 });
 
 const onRowClick = (evt, row) => {
+  if (authStore.user?.role === 'bpbd') {
+    $q.notify({
+      message: 'Akun BPBD tidak memiliki izin untuk mengakses detail/konfigurasi stasiun',
+      color: 'warning',
+      icon: 'warning',
+      position: 'top',
+      timeout: 2500
+    });
+    return;
+  }
   router.push(`/dashboard/station/${row.station_id}`);
 };
 
@@ -552,5 +676,20 @@ const getStatusColor = (status) => {
   0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
   70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
   100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.transition-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+}
+
+.bpbd-table {
+  :deep(tr:hover) {
+    background: inherit !important;
+    cursor: default !important;
+  }
 }
 </style>

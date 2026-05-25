@@ -12,5 +12,8 @@ export default {
   },
   delete(id) {
     return api.delete(`stations/${id}`);
+  },
+  getRainfallHistory(id) {
+    return api.get(`stations/${id}/rainfall-history`);
   }
 };

@@ -87,9 +87,14 @@
               <q-icon name="cloud" size="20px" class="q-mr-sm" />
               <div class="text-caption text-weight-medium uppercase opacity-80" style="letter-spacing: 0.5px">Rainfall (Live)</div>
             </div>
-            <div class="flex items-end q-gutter-x-xs">
-              <div class="text-h4 text-weight-bold">{{ currentStation.rain || '0.0' }}</div>
-              <div class="text-caption q-pb-xs opacity-80">mm/h</div>
+            <div class="flex justify-between items-end q-gutter-x-xs">
+              <div class="flex items-end q-gutter-x-xs">
+                <div class="text-h4 text-weight-bold">{{ currentStation.rain || '0.0' }}</div>
+                <div class="text-caption q-pb-xs opacity-80">mm/h</div>
+              </div>
+              <q-btn flat dense round icon="show_chart" color="white" class="opacity-80 hover-opacity-100" @click="openRainChart">
+                <q-tooltip>Lihat Grafik Curah Hujan</q-tooltip>
+              </q-btn>
             </div>
             <div class="text-caption q-mt-md opacity-70">
               Update Terakhir: {{ currentStation.lastUpdate || '-' }}
@@ -178,7 +183,7 @@
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="q-mr-xs"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-4 4"/></svg>
                 <span class="text-weight-bold text-caption">Deformasi (cm)</span>
               </div>
-              <q-input v-model="form.deformasi" outlined dense class="bg-grey-2 border-radius-sm threshold-input" />
+              <q-input v-model="form.deformasi" outlined dense :disable="isReadOnly" class="bg-grey-2 border-radius-sm threshold-input" />
               <div class="text-grey-5 q-mt-xs q-italic" style="font-size: 11px">Memicu notifikasi jika pergerakan tanah melebihi nilai ini (GNSS precision tracking).</div>
             </div>
             
@@ -188,7 +193,7 @@
                 <q-icon name="cloud" size="18px" class="q-mr-xs"/>
                 Curah Hujan (mm)
               </div>
-              <q-input v-model="form.curah_hujan" outlined dense class="bg-grey-2 border-radius-sm threshold-input" />
+              <q-input v-model="form.curah_hujan" outlined dense :disable="isReadOnly" class="bg-grey-2 border-radius-sm threshold-input" />
               <div class="text-grey-5 q-mt-xs q-italic" style="font-size: 11px">Memicu notifikasi jika curah hujan melebihi nilai ini.</div>
             </div>
           </div>
@@ -203,7 +208,7 @@
                   <q-icon name="campaign" size="18px" class="text-red-5 q-mr-sm" />
                   <span class="text-slate-800 text-weight-medium" style="font-size: 13px">Sirene Lokal</span>
                 </div>
-                <q-checkbox v-model="form.trigger_sirene" size="sm" class="custom-checkbox" />
+                <q-checkbox v-model="form.trigger_sirene" size="sm" :disable="isReadOnly" class="custom-checkbox" />
               </div>
               
               <div class="trigger-row bg-grey-1 flex justify-between items-center q-pa-sm border-radius-sm">
@@ -211,7 +216,7 @@
                   <q-icon name="fa-brands fa-whatsapp" size="18px" class="text-green-6 q-mr-sm" />
                   <span class="text-slate-800 text-weight-medium" style="font-size: 13px">WhatsApp Blast</span>
                 </div>
-                <q-checkbox v-model="form.trigger_wa" size="sm" class="custom-checkbox" />
+                <q-checkbox v-model="form.trigger_wa" size="sm" :disable="isReadOnly" class="custom-checkbox" />
               </div>
               
               <div class="trigger-row bg-grey-1 flex justify-between items-center q-pa-sm border-radius-sm">
@@ -219,7 +224,7 @@
                   <q-icon name="send" size="18px" class="text-blue-5 q-mr-sm" />
                   <span class="text-slate-800 text-weight-medium" style="font-size: 13px">Telegram Alert</span>
                 </div>
-                <q-checkbox v-model="form.trigger_telegram" size="sm" class="custom-checkbox" />
+                <q-checkbox v-model="form.trigger_telegram" size="sm" :disable="isReadOnly" class="custom-checkbox" />
               </div>
             </div>
           </div>
@@ -229,9 +234,23 @@
       <!-- Footer Action -->
       <q-separator />
       <q-card-actions align="right" class="q-pa-md bg-white">
-        <q-btn unelevated color="blue-5" icon="save" label="Simpan Konfigurasi" class="border-radius-sm text-weight-medium q-px-md" no-caps @click="save" />
+        <q-btn v-if="!isReadOnly" unelevated color="blue-5" icon="save" label="Simpan Konfigurasi" class="border-radius-sm text-weight-medium q-px-md" no-caps @click="save" />
+        <q-banner v-else dense inline-actions class="bg-amber-1 text-amber-9 border-radius-sm q-py-xs full-width" style="border: 1px solid #fde68a;">
+          <template v-slot:avatar>
+            <q-icon name="warning" color="amber-8" size="18px" />
+          </template>
+          <span class="text-caption text-weight-bold">Akun BPBD hanya memiliki izin membaca data. Konfigurasi tidak dapat diubah.</span>
+        </q-banner>
       </q-card-actions>
     </q-card>
+    
+    <!-- Chart Dialog -->
+    <ChartDialog 
+      v-model="showChartDialog"
+      :station-id="stationId"
+      :station-name="currentStation.name"
+      chart-type="rainfall"
+    />
   </q-page>
 </template>
 
@@ -241,11 +260,18 @@ import { useRoute } from 'vue-router';
 import { useQuasar, date } from 'quasar';
 import { useStreamStore } from 'src/stores/stream';
 import { useStationStore } from 'src/stores/station';
+import { useAuthStore } from 'src/stores/auth';
+import ChartDialog from 'src/components/ChartDialog.vue';
 
 const route = useRoute();
 const $q = useQuasar();
 const streamStore = useStreamStore();
 const stationStore = useStationStore();
+const authStore = useAuthStore();
+
+const isReadOnly = computed(() => authStore.user?.role === 'bpbd');
+
+const showChartDialog = ref(false);
 
 const stationId = computed(() => {
   return route.params.id;
@@ -254,6 +280,10 @@ const stationId = computed(() => {
 const currentStation = computed(() => {
   return stationStore.stations.find(s => s.station_id === stationId.value) || {};
 });
+
+const openRainChart = () => {
+  showChartDialog.value = true;
+};
 
 const form = ref({
   deformasi: '10.0',

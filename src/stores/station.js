@@ -60,6 +60,15 @@ export const useStationStore = defineStore('station', {
       await StationService.delete(id);
       await this.fetchStations();
     },
+    async fetchRainfallHistory(id) {
+      try {
+        const response = await StationService.getRainfallHistory(id);
+        return response.data || [];
+      } catch (error) {
+        console.error('Store fetchRainfallHistory error:', error);
+        return [];
+      }
+    },
     async fetchBaseStations() {
       this.loading = true;
       try {

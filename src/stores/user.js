@@ -17,6 +17,7 @@ export const useUserStore = defineStore('user', {
           username: u.username,
           email: u.email,
           role: u.role,
+          phone_number: u.phone_number || '',
           sites: u.sites || [],
           site_ids: u.sites ? u.sites.map(s => s.id) : [],
           initials: u.full_name ? u.full_name.substring(0, 2).toUpperCase() : '??',

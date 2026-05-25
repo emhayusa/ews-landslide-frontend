@@ -48,8 +48,9 @@ export default defineRouter(function (/* { store, ssrContext } */) {
         }
 
         // RBAC Check
-        if (to.meta.role) {
-          const allowedRoles = Array.isArray(to.meta.role) ? to.meta.role : [to.meta.role]
+        const roleLimit = to.meta.role || to.meta.roles;
+        if (roleLimit) {
+          const allowedRoles = Array.isArray(roleLimit) ? roleLimit : [roleLimit]
           if (!allowedRoles.includes(user.role)) {
             return next('/dashboard')
           }

@@ -11,7 +11,10 @@ const routes = [
       {
         path: 'station/:id',
         component: () => import('pages/Dashboard/StationDetailPage.vue'),
-        meta: { title: 'Dashboard / Konfigurasi Threshold Bahaya Parameter Sensor' }
+        meta: { 
+          title: 'Dashboard / Konfigurasi Threshold Bahaya Parameter Sensor',
+          roles: ['admin', 'operator', 'mitra']
+        }
       }
     ]
   },

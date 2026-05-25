@@ -81,12 +81,24 @@
               <label class="text-slate-800 block q-mb-sm" style="font-size: 14px">Role</label>
               <q-select
                 v-model="newUser.role"
-                :options="['admin', 'operator', 'mitra']"
+                :options="['admin', 'operator', 'mitra', 'bpbd']"
                 filled
                 dense
                 class="custom-input-filled text-capitalize"
               />
             </div>
+          </div>
+
+          <!-- No. Handphone (WA) -->
+          <div class="form-group q-mb-lg">
+            <label class="text-slate-800 block q-mb-sm" style="font-size: 14px">No. Handphone (WA)</label>
+            <q-input
+              v-model="newUser.phone_number"
+              placeholder="contoh: 081234567890"
+              filled
+              dense
+              class="custom-input-filled"
+            />
           </div>
 
           <!-- row untuk Site Assignment (khusus mitra) -->
@@ -151,11 +163,21 @@
             </q-td>
           </template>
 
+          <template v-slot:body-cell-phone_number="props">
+            <q-td :props="props">
+              <div v-if="props.value" class="row items-center no-wrap text-slate-800">
+                <q-icon name="chat" size="14px" class="q-mr-xs" style="color: #10b981" />
+                <span class="text-weight-medium" style="font-family: monospace; font-size: 13px; color: #334155;">{{ props.value }}</span>
+              </div>
+              <div v-else class="text-grey-4 italic text-caption">Belum diatur</div>
+            </q-td>
+          </template>
+
           <template v-slot:body-cell-role="props">
             <q-td :props="props">
               <q-badge
-                :color="props.value === 'admin' ? 'purple-1' : (props.value === 'mitra' ? 'amber-1' : 'cyan-1')"
-                :text-color="props.value === 'admin' ? 'purple-8' : (props.value === 'mitra' ? 'amber-8' : 'cyan-8')"
+                :color="props.value === 'admin' ? 'purple-1' : (props.value === 'mitra' ? 'amber-1' : (props.value === 'bpbd' ? 'indigo-1' : 'cyan-1'))"
+                :text-color="props.value === 'admin' ? 'purple-8' : (props.value === 'mitra' ? 'amber-8' : (props.value === 'bpbd' ? 'indigo-8' : 'cyan-8'))"
                 class="q-px-md q-py-xs text-weight-bold uppercase"
                 rounded
               >
@@ -230,6 +252,7 @@ const newUser = reactive({
   email: '',
   password: '',
   role: 'operator',
+  phone_number: '',
   site_ids: []
 });
 
@@ -258,6 +281,7 @@ const openAddDialog = () => {
     email: '',
     password: '',
     role: 'operator',
+    phone_number: '',
     site_ids: []
   });
   showAddDialog.value = true;
@@ -272,6 +296,7 @@ const openEditDialog = (row) => {
     email: row.email,
     password: '', // Leave empty for no change
     role: row.role.toLowerCase(),
+    phone_number: row.phone_number || '',
     site_ids: row.site_ids || []
   });
   showAddDialog.value = true;
@@ -290,6 +315,7 @@ const saveUser = async () => {
       email: newUser.email,
       password: newUser.password || undefined,
       role: newUser.role.toLowerCase(),
+      phone_number: newUser.phone_number,
       site_ids: newUser.role === 'mitra' ? newUser.site_ids : []
     };
 
@@ -331,6 +357,7 @@ const columns = [
   { name: 'nama', align: 'left', label: 'NAMA', field: 'nama' },
   { name: 'username', align: 'left', label: 'USERNAME', field: 'username' },
   { name: 'email', align: 'left', label: 'EMAIL', field: 'email' },
+  { name: 'phone_number', align: 'left', label: 'NO. HP (WA)', field: 'phone_number' },
   { name: 'role', align: 'center', label: 'ROLE', field: 'role' },
   { name: 'sites', align: 'left', label: 'SITE ACCESS', field: 'sites' },
   { name: 'dibuat', align: 'left', label: 'DIBUAT', field: 'dibuat' },

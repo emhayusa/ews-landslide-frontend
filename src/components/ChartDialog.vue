@@ -33,18 +33,23 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useStationStore } from 'src/stores/station'
 
 const props = defineProps({
   modelValue: Boolean,
   stationId: String,
-  stationName: String
+  stationName: String,
+  chartType: {
+    type: String,
+    default: 'deformation' // 'deformation' or 'rainfall'
+  }
 })
 
 const emit = defineEmits(['update:modelValue'])
 const stationStore = useStationStore()
 const timeRange = ref('1h')
+const rainfallHistory = ref([])
 
 const visible = computed({
   get: () => props.modelValue,
@@ -55,76 +60,102 @@ const station = computed(() =>
   stationStore.stations.find(s => s.station_id === props.stationId)
 )
 
-const series = computed(() => [{
-  name: 'Deformation',
-  data: station.value?.history || []
-}])
+watch(visible, async (val) => {
+  if (val && props.chartType === 'rainfall') {
+    rainfallHistory.value = await stationStore.fetchRainfallHistory(props.stationId)
+  }
+})
 
-const options = computed(() => ({
-  chart: {
-    id: 'deformation-chart',
-    toolbar: { show: false },
-    animations: {
-      enabled: true,
-      easing: 'linear',
-      dynamicAnimation: {
-        speed: 1000
+const series = computed(() => {
+  if (props.chartType === 'rainfall') {
+    return [{
+      name: 'Curah Hujan (Hourly)',
+      data: rainfallHistory.value.map(item => ({
+        x: new Date(item.timestamp).getTime(),
+        y: item.hourly
+      }))
+    }]
+  }
+  return [{
+    name: 'Deformation',
+    data: station.value?.history || []
+  }]
+})
+
+const options = computed(() => {
+  const isRain = props.chartType === 'rainfall'
+  
+  return {
+    chart: {
+      id: isRain ? 'rainfall-chart' : 'deformation-chart',
+      toolbar: { show: false },
+      animations: {
+        enabled: true,
+        easing: 'linear',
+        dynamicAnimation: { speed: 1000 }
+      },
+      zoom: { enabled: false },
+      sparkline: { enabled: false },
+      padding: { left: 30, right: 30 }
+    },
+    xaxis: {
+      type: 'datetime',
+      labels: {
+        format: 'HH:mm:ss',
+        datetimeUTC: false,
+        style: { colors: '#94a3b8', fontSize: '10px' }
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+      title: {
+        text: 'Time',
+        style: { color: '#64748b', fontSize: '11px', fontWeight: 600 }
       }
     },
-    zoom: { enabled: false },
-    sparkline: { enabled: false },
-    padding: {
-      left: 30,
-      right: 30
-    }
-  },
-  xaxis: {
-    type: 'datetime',
-    labels: {
-      format: 'HH:mm:ss',
-      datetimeUTC: false, // Use local time (GMT+7 if user is in that zone)
-      style: { colors: '#94a3b8', fontSize: '10px' }
+    yaxis: {
+      labels: {
+        formatter: (val) => isRain ? val.toFixed(1) + 'mm' : val.toFixed(4) + 'm',
+        style: { colors: '#94a3b8', fontSize: '10px' },
+        minWidth: 70,
+        offsetX: -5
+      },
+      title: {
+        text: isRain ? 'Rainfall (mm)' : 'Offset (m)',
+        rotate: -90,
+        offsetX: -10,
+        style: { color: '#64748b', fontSize: '11px', fontWeight: 600 }
+      }
     },
-    axisBorder: { show: false },
-    axisTicks: { show: false },
-    title: {
-      text: 'Time',
-      style: { color: '#64748b', fontSize: '11px', fontWeight: 600 }
-    }
-  },
-  yaxis: {
-    labels: {
-      formatter: (val) => val.toFixed(4) + 'm',
-      style: { colors: '#94a3b8', fontSize: '10px' },
-      minWidth: 70,
-      offsetX: -5
+    stroke: {
+      show: !isRain,
+      width: isRain ? 2 : 0,
+      curve: 'smooth'
     },
-    title: {
-      text: 'Offset (m)',
-      rotate: -90,
-      offsetX: -10,
-      style: { color: '#64748b', fontSize: '11px', fontWeight: 600 }
+    fill: {
+      type: isRain ? 'gradient' : 'solid',
+      gradient: {
+        shadeIntensity: 1,
+        opacityFrom: 0.7,
+        opacityTo: 0.3,
+        stops: [0, 90, 100]
+      }
+    },
+    colors: [isRain ? '#3b82f6' : '#818cf8'],
+    grid: {
+      borderColor: '#f1f5f9',
+      strokeDashArray: 4,
+    },
+    markers: {
+      size: isRain ? 0 : 5,
+      colors: [isRain ? '#3b82f6' : '#818cf8'],
+      strokeWidth: 0,
+      hover: { size: 7 }
+    },
+    tooltip: {
+      x: { format: 'dd MMM HH:mm' }
     }
-  },
-  stroke: {
-    show: false,
-    width: 0
-  },
-  colors: ['#818cf8'], // Soft purple color from image
-  grid: {
-    borderColor: '#f1f5f9',
-    strokeDashArray: 4,
-  },
-  markers: {
-    size: 5,
-    colors: ['#818cf8'],
-    strokeWidth: 0,
-    hover: { size: 7 }
-  },
-  tooltip: {
-    x: { format: 'HH:mm:ss' }
   }
-}))
+})
 </script>
 
 <style scoped>
